@@ -1,6 +1,21 @@
 // Club in a Box — starter prototype
-// This runs entirely client-side with in-memory state. No real backend yet.
+// Persists submissions and module status to Supabase when supabase-config.js is
+// filled in; otherwise falls back to the original in-memory-only behaviour.
 // See README.md for the suggested build sequence in Claude Code.
+
+const SUBMISSION_STORAGE_KEY = "clubInABoxSubmissionId";
+
+const supabaseClient = (typeof SUPABASE_URL !== "undefined" && SUPABASE_URL && SUPABASE_URL !== "YOUR_SUPABASE_URL" && window.supabase)
+  ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY)
+  : null;
+
+async function saveModuleStatus(submissionId, moduleId, status) {
+  if (!supabaseClient || !submissionId) return;
+  const { error } = await supabaseClient
+    .from("module_status")
+    .upsert({ submission_id: submissionId, module_id: moduleId, status }, { onConflict: "submission_id,module_id" });
+  if (error) console.error("Failed to save module status:", error);
+}
 
 const BASE_QUESTIONS = [
   { id: "founders", q: "How many people are founding and funding this?", options: [
@@ -63,7 +78,8 @@ let state = {
   modules: null,
   dashTab: "roadmap",
   unlocked: {},
-  email: ""
+  email: "",
+  submissionId: null
 };
 
 function buildModules(a) {
@@ -240,8 +256,20 @@ function render() {
         </div>
       </div>
     `));
-    document.getElementById("email-submit").onclick = () => {
+    document.getElementById("email-submit").onclick = async () => {
       state.email = document.getElementById("email-input").value;
+      if (supabaseClient) {
+        const { data, error } = await supabaseClient
+          .from("submissions")
+          .insert({ email: state.email, answers: state.answers })
+          .select()
+          .single();
+        if (error) console.error("Failed to save submission:", error);
+        else {
+          state.submissionId = data.id;
+          localStorage.setItem(SUBMISSION_STORAGE_KEY, data.id);
+        }
+      }
       state.view = "dashboard";
       render();
     };
@@ -271,7 +299,8 @@ function render() {
     btn.onclick = () => { state.dashTab = btn.getAttribute("data-tab"); render(); };
   });
   document.getElementById("restart-btn").onclick = () => {
-    state = { view: "quiz", step: 0, answers: {}, modules: null, dashTab: "roadmap", unlocked: {}, email: "" };
+    localStorage.removeItem(SUBMISSION_STORAGE_KEY);
+    state = { view: "quiz", step: 0, answers: {}, modules: null, dashTab: "roadmap", unlocked: {}, email: "", submissionId: null };
     render();
   };
 
@@ -333,7 +362,9 @@ function render() {
           </div>
         `);
         card.querySelector(".cycle-btn").onclick = () => {
-          state.modules = state.modules.map(x => x.id === m.id ? { ...x, status: nextStatus(x.status) } : x);
+          const newStatus = nextStatus(m.status);
+          state.modules = state.modules.map(x => x.id === m.id ? { ...x, status: newStatus } : x);
+          saveModuleStatus(state.submissionId, m.id, newStatus);
           render();
         };
         tabContent.appendChild(card);
@@ -373,4 +404,31 @@ function render() {
   }
 }
 
-render();
+async function restoreSession() {
+  const savedId = localStorage.getItem(SUBMISSION_STORAGE_KEY);
+  if (!supabaseClient || !savedId) { render(); return; }
+
+  const { data: submission, error } = await supabaseClient
+    .from("submissions").select("*").eq("id", savedId).single();
+  if (error || !submission) {
+    localStorage.removeItem(SUBMISSION_STORAGE_KEY);
+    render();
+    return;
+  }
+
+  const { data: statuses } = await supabaseClient
+    .from("module_status").select("*").eq("submission_id", savedId);
+  const modules = buildModules(submission.answers);
+  (statuses || []).forEach(s => {
+    const mod = modules.find(m => m.id === s.module_id);
+    if (mod) mod.status = s.status;
+  });
+
+  state = {
+    view: "dashboard", step: 0, answers: submission.answers, modules,
+    dashTab: "roadmap", unlocked: {}, email: submission.email, submissionId: submission.id
+  };
+  render();
+}
+
+restoreSession();

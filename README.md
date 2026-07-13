@@ -9,15 +9,30 @@ Plain HTML/CSS/JS, no build step, no framework, no dependencies. Open `index.htm
 browser and it works. This is deliberate — it's the fastest way to get something live and
 testable with real founders before investing in a proper stack.
 
-**Everything currently runs in memory.** Refresh the page and it resets. There's no real
-database, no real email sending, no real payment for partner introductions, and the
-"AI summary" is rule-based text generation, not a live model call.
+**Persistence (step 1) is wired up.** Submissions and module status now save to Supabase
+if you've configured it — see "Setting up Supabase" below. Without configuration the app
+still runs entirely in memory, same as before. There's still no real email sending, no
+real payment for partner introductions, and the "AI summary" is rule-based text
+generation, not a live model call.
+
+## Setting up Supabase
+
+1. Create a free project at [supabase.com](https://supabase.com).
+2. In the SQL Editor, run [`supabase-schema.sql`](supabase-schema.sql) — it creates the
+   `submissions` and `module_status` tables with row-level security policies.
+3. In Settings > API, copy the Project URL and the `anon` public key.
+4. Paste them into [`supabase-config.js`](supabase-config.js) as `SUPABASE_URL` and
+   `SUPABASE_ANON_KEY`.
+5. Open `index.html`. Submitting the quiz now creates a row in `submissions`, and toggling
+   a module's status upserts into `module_status`. Refreshing the page restores the
+   dashboard (via a submission id kept in `localStorage`) instead of resetting.
+
+Leaving `supabase-config.js` with its placeholder values keeps the app in its original
+in-memory-only mode — nothing breaks if you skip this.
 
 ## Suggested build sequence (in order of priority)
 
-1. **Persistence.** Add Supabase (free tier is fine at this scale). Two tables to start:
-   `submissions` (email, answers, timestamp) and `module_status` (submission_id, module_id,
-   status). This alone turns the tool from a demo into something with real usage data.
+1. ~~**Persistence.**~~ Done — see "Setting up Supabase" above.
 
 2. **Real email delivery.** When someone submits their email on the capture screen, actually
    send them their roadmap (Resend or Postmark are simple to wire up). This is also your
