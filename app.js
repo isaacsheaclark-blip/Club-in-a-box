@@ -17,6 +17,19 @@ async function saveModuleStatus(submissionId, moduleId, status) {
   if (error) console.error("Failed to save module status:", error);
 }
 
+async function sendRoadmapEmail(email, answers, modules) {
+  if (!supabaseClient) return;
+  const summary = buildSummary(answers, modules);
+  try {
+    const { error } = await supabaseClient.functions.invoke("smart-responder", {
+      body: { email, summary, modules: modules.map(m => ({ stage: m.stage, title: m.title, note: m.note })) },
+    });
+    if (error) console.error("Failed to send roadmap email:", error);
+  } catch (err) {
+    console.error("Failed to send roadmap email:", err);
+  }
+}
+
 const BASE_QUESTIONS = [
   { id: "founders", q: "How many people are founding and funding this?", options: [
     { v: "solo", l: "Just me" }, { v: "cofounders", l: "Me plus 1-2 co-founders" }, { v: "investors", l: "Multiple outside investors" }
@@ -268,6 +281,7 @@ function render() {
         else {
           state.submissionId = data.id;
           localStorage.setItem(SUBMISSION_STORAGE_KEY, data.id);
+          sendRoadmapEmail(state.email, state.answers, state.modules);
         }
       }
       state.view = "dashboard";

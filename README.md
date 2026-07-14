@@ -9,11 +9,11 @@ Plain HTML/CSS/JS, no build step, no framework, no dependencies. Open `index.htm
 browser and it works. This is deliberate — it's the fastest way to get something live and
 testable with real founders before investing in a proper stack.
 
-**Persistence (step 1) is wired up.** Submissions and module status now save to Supabase
-if you've configured it — see "Setting up Supabase" below. Without configuration the app
-still runs entirely in memory, same as before. There's still no real email sending, no
-real payment for partner introductions, and the "AI summary" is rule-based text
-generation, not a live model call.
+**Persistence (step 1) and email delivery (step 2) are wired up.** Submissions and module
+status save to Supabase, and submitting the quiz sends the founder their roadmap by email
+via Resend — see the setup sections below. Without configuration the app falls back to its
+original in-memory, no-email behaviour. There's still no real payment for partner
+introductions, and the "AI summary" is rule-based text generation, not a live model call.
 
 ## Setting up Supabase
 
@@ -30,13 +30,30 @@ generation, not a live model call.
 Leaving `supabase-config.js` with its placeholder values keeps the app in its original
 in-memory-only mode — nothing breaks if you skip this.
 
+## Setting up email delivery
+
+Sending mail needs an API key, which can't live in client-side code — so this runs as a
+Supabase Edge Function ([`supabase/functions/smart-responder/index.ts`](supabase/functions/smart-responder/index.ts))
+rather than a call straight from `app.js`.
+
+1. Create a free account at [resend.com](https://resend.com) and grab an API key from the
+   dashboard. Don't paste it into the codebase — it goes into Supabase as a secret (step 3).
+2. In the Supabase Dashboard, go to **Edge Functions > Deploy a new function**, name it
+   `smart-responder`, and paste in the contents of `supabase/functions/smart-responder/index.ts`.
+3. Under **Edge Functions > Manage secrets**, add `RESEND_API_KEY` with the key from step 1.
+   Keep it out of the repo — it's a real secret, unlike the Supabase anon key.
+4. Optional: set a `RESEND_FROM` secret (e.g. `"Club in a Box <hello@yourdomain.com>"`) once
+   you've verified a sending domain in Resend. Without it, mail sends from Resend's shared
+   `onboarding@resend.dev` address, which is fine for testing but not for real founders.
+5. Submitting the quiz now calls this function and emails the roadmap to the address entered
+   on the capture screen. Failures are logged to the console and don't block the dashboard —
+   a missing or misconfigured function degrades gracefully, same as Supabase itself.
+
 ## Suggested build sequence (in order of priority)
 
 1. ~~**Persistence.**~~ Done — see "Setting up Supabase" above.
 
-2. **Real email delivery.** When someone submits their email on the capture screen, actually
-   send them their roadmap (Resend or Postmark are simple to wire up). This is also your
-   lead list — treat it as the actual point of the free tool, not an afterthought.
+2. ~~**Real email delivery.**~~ Done — see "Setting up email delivery" above.
 
 3. **A live AI summary.** Replace `buildSummary()` in `app.js` with a real call to the Claude
    API. Anthropic's `/v1/messages` endpoint is the right fit here — send the founder's answers
