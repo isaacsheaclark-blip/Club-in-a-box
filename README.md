@@ -9,11 +9,14 @@ Plain HTML/CSS/JS, no build step, no framework, no dependencies. Open `index.htm
 browser and it works. This is deliberate — it's the fastest way to get something live and
 testable with real founders before investing in a proper stack.
 
-**Persistence (step 1) and email delivery (step 2) are wired up.** Submissions and module
-status save to Supabase, and submitting the quiz sends the founder their roadmap by email
-via Resend — see the setup sections below. Without configuration the app falls back to its
-original in-memory, no-email behaviour. There's still no real payment for partner
-introductions, and the "AI summary" is rule-based text generation, not a live model call.
+**Persistence (step 1) and email delivery (step 2) are wired up and live** at
+[club-in-a-box.vercel.app](https://club-in-a-box.vercel.app) (step 4, deployment, is also
+done). Submissions and module status save to Supabase, and submitting the quiz emails the
+founder their roadmap via Resend — see the setup sections below. The AI summary (step 3)
+is coded but not yet deployed — see "Setting up the AI summary" for when you're ready.
+Without configuration each piece falls back gracefully to its original behaviour (in-memory
+state, no email, rule-based summary text). There's still no real payment for partner
+introductions.
 
 ## Setting up Supabase
 
@@ -49,22 +52,41 @@ rather than a call straight from `app.js`.
    on the capture screen. Failures are logged to the console and don't block the dashboard —
    a missing or misconfigured function degrades gracefully, same as Supabase itself.
 
+## Setting up the AI summary
+
+Not yet done — pick this up when ready to spend real money (rough cost: well under $1/month
+at a few requests a day on Sonnet 4.6, but the API key requires a funded Anthropic account,
+unlike Supabase/Resend's free tiers). The code is already written and just needs deploying.
+
+Same pattern again: the Anthropic API key can't live in client-side code, so this is another
+Supabase Edge Function ([`supabase/functions/ai-summary/index.ts`](supabase/functions/ai-summary/index.ts))
+that calls Claude's `/v1/messages` endpoint with the founder's answers, their generated
+modules, and a curated knowledge base of UK padel regulatory patterns (SEIS/EIS eligibility,
+HMRC evidence expectations, DBS/safeguarding requirements).
+
+1. Get an API key from the [Anthropic Console](https://console.anthropic.com).
+2. In the Supabase Dashboard, go to **Edge Functions > Deploy a new function**, name it
+   `ai-summary`, and paste in the contents of `supabase/functions/ai-summary/index.ts`.
+3. Under **Edge Functions > Manage secrets**, add a secret named exactly `ANTHROPIC_API_KEY`
+   with the key from step 1. Get the name exactly right — env var names are case-sensitive
+   and must match what the function reads (`Deno.env.get("ANTHROPIC_API_KEY")`); a mismatch
+   is a common cause of "not configured" errors here (as it was with `RESEND_API_KEY` above).
+4. The dashboard now fetches a live, personalised summary on load and swaps it in once it
+   arrives, labelled "Summary — AI generated." Until it resolves (or if it fails), the
+   original rule-based `buildSummary()` text is shown instead, so the roadmap is never blank.
+
 ## Suggested build sequence (in order of priority)
 
 1. ~~**Persistence.**~~ Done — see "Setting up Supabase" above.
 
 2. ~~**Real email delivery.**~~ Done — see "Setting up email delivery" above.
 
-3. **A live AI summary.** Replace `buildSummary()` in `app.js` with a real call to the Claude
-   API. Anthropic's `/v1/messages` endpoint is the right fit here — send the founder's answers
-   plus a curated knowledge base of UK padel-specific regulatory patterns (SEIS/EIS eligibility
-   quirks, HMRC's evidence expectations, DBS/safeguarding requirements) as context, and ask for
-   a short, prioritised summary. This needs a real backend (a small serverless function is
-   enough) since API keys can't live in client-side code.
+3. **A live AI summary.** Code written, not yet deployed — see "Setting up the AI summary"
+   above. Deferred until ready to fund an Anthropic API key (Supabase and Resend are free at
+   this scale; this is the one step with a real, if small, ongoing cost).
 
-4. **Deploy it.** Push this folder to a GitHub repo, connect it to Vercel or Netlify (both have
-   generous free tiers and deploy automatically on every push). No build step needed for the
-   current static version.
+4. ~~**Deploy it.**~~ Done — live at [club-in-a-box.vercel.app](https://club-in-a-box.vercel.app),
+   auto-deploying from GitHub on every push to `main`.
 
 5. **Partner unlock → real payment.** Once you've validated that founders will engage with the
    Partners tab, wire up Stripe Checkout for the "Unlock introduction" buttons. Start simple —

@@ -30,6 +30,30 @@ async function sendRoadmapEmail(email, answers, modules) {
   }
 }
 
+function escapeHtml(s) {
+  return s.replace(/[&<>"']/g, c => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+}
+
+async function loadAiSummary() {
+  if (!supabaseClient || state.aiSummary || state.aiSummaryLoading) return;
+  state.aiSummaryLoading = true;
+  try {
+    const { data, error } = await supabaseClient.functions.invoke("ai-summary", {
+      body: {
+        answers: state.answers,
+        modules: state.modules.map(m => ({ stage: m.stage, title: m.title, status: m.status })),
+      },
+    });
+    if (error) console.error("Failed to load AI summary:", error);
+    else if (data && data.summary) state.aiSummary = data.summary;
+  } catch (err) {
+    console.error("Failed to load AI summary:", err);
+  } finally {
+    state.aiSummaryLoading = false;
+    render();
+  }
+}
+
 const BASE_QUESTIONS = [
   { id: "founders", q: "How many people are founding and funding this?", options: [
     { v: "solo", l: "Just me" }, { v: "cofounders", l: "Me plus 1-2 co-founders" }, { v: "investors", l: "Multiple outside investors" }
@@ -92,7 +116,9 @@ let state = {
   dashTab: "roadmap",
   unlocked: {},
   email: "",
-  submissionId: null
+  submissionId: null,
+  aiSummary: null,
+  aiSummaryLoading: false
 };
 
 function buildModules(a) {
@@ -286,6 +312,7 @@ function render() {
       }
       state.view = "dashboard";
       render();
+      loadAiSummary();
     };
     return;
   }
@@ -314,17 +341,24 @@ function render() {
   });
   document.getElementById("restart-btn").onclick = () => {
     localStorage.removeItem(SUBMISSION_STORAGE_KEY);
-    state = { view: "quiz", step: 0, answers: {}, modules: null, dashTab: "roadmap", unlocked: {}, email: "", submissionId: null };
+    state = {
+      view: "quiz", step: 0, answers: {}, modules: null, dashTab: "roadmap", unlocked: {},
+      email: "", submissionId: null, aiSummary: null, aiSummaryLoading: false
+    };
     render();
   };
 
   const tabContent = document.getElementById("tab-content");
 
   if (state.dashTab === "roadmap") {
+    const summaryLabel = state.aiSummary ? "Summary — AI generated"
+      : state.aiSummaryLoading ? "Summary — generating your personalised AI summary…"
+      : "Summary — preview logic, not a live AI call yet";
+    const summaryBody = state.aiSummary ? escapeHtml(state.aiSummary) : buildSummary(state.answers, state.modules);
     tabContent.appendChild(el(`
       <div class="summary-card">
-        <p class="label">Summary — preview logic, not a live AI call yet</p>
-        <p class="body">${buildSummary(state.answers, state.modules)}</p>
+        <p class="label">${summaryLabel}</p>
+        <p class="body">${summaryBody}</p>
       </div>
     `));
 
@@ -440,9 +474,11 @@ async function restoreSession() {
 
   state = {
     view: "dashboard", step: 0, answers: submission.answers, modules,
-    dashTab: "roadmap", unlocked: {}, email: submission.email, submissionId: submission.id
+    dashTab: "roadmap", unlocked: {}, email: submission.email, submissionId: submission.id,
+    aiSummary: null, aiSummaryLoading: false
   };
   render();
+  loadAiSummary();
 }
 
 restoreSession();
